@@ -1,0 +1,61 @@
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+__pycache__/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+/media
+/staticfiles
+/static_root
+*.pot
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Docker
+*.env.docker
+
+# Redis
+dump.rdb
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Backup files
+*.bak
