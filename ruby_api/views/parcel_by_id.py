@@ -22,42 +22,48 @@ def search_parcel_by_id(request):
     if not parcel_id:
         return Response({'error': 'parcel_id required'}, status=400)
 
-    qgs = QGISManager.get_application()
-    teryt = parcel_id[:4]
-    service = WFS_SERVICES.get(teryt)
+    if '_' not in parcel_id or len(parcel_id) < 4:
+        return Response({'error': 'Invalid parcel_id format'}, status=400)
 
-    if not service:
-        return Response({'error': f'Service not found for TERYT: {teryt}'}, status=404)
+    try:
+        qgs = QGISManager.get_application()
+        teryt = parcel_id[:4]
+        service = WFS_SERVICES.get(teryt)
 
-    layer_names = ['ms:dzialki', 'ewns:dzialki', 'wfs:dzialki']
+        if not service:
+            return Response({'error': f'Service not found for TERYT: {teryt}'}, status=404)
 
-    for layer_name in layer_names:
-        uri = QgsDataSourceUri()
-        uri.setParam('url', service['url'])
-        uri.setParam('version', 'auto')
-        uri.setParam('typename', layer_name)
-        uri.setParam('filter', f"ID_DZIALKI='{parcel_id}'")
-        uri.setParam('ssl_verify', 'false')
+        layer_names = ['ms:dzialki', 'ewns:dzialki', 'wfs:dzialki']
 
-        layer = QgsVectorLayer(uri.uri(), f"parcel_{layer_name}", "WFS")
+        for layer_name in layer_names:
+            uri = QgsDataSourceUri()
+            uri.setParam('url', service['url'])
+            uri.setParam('version', 'auto')
+            uri.setParam('typename', layer_name)
+            uri.setParam('filter', f"ID_DZIALKI='{parcel_id}'")
+            uri.setParam('ssl_verify', 'false')
 
-        if layer.isValid():
-            features = list(layer.getFeatures())
+            layer = QgsVectorLayer(uri.uri(), f"parcel_{layer_name}", "WFS")
 
-            if features:
-                first_feature = features[0]
-                attributes = {field.name(): qvariant_to_python(value) for field, value in
-                              zip(layer.fields(), first_feature.attributes())}
-                geometry = first_feature.geometry().asWkt()
+            if layer.isValid():
+                features = list(layer.getFeatures())
 
-                del layer
-                return Response({
-                    'parcel_id': parcel_id,
-                    'service': service,
-                    'layer_name': layer_name,
-                    'attributes': attributes,
-                    'geometry': geometry
-                })
-        del layer
+                if features:
+                    first_feature = features[0]
+                    attributes = {field.name(): qvariant_to_python(value) for field, value in
+                                  zip(layer.fields(), first_feature.attributes())}
+                    geometry = first_feature.geometry().asWkt()
 
-    return Response({'error': 'Parcel not found'}, status=404)
+                    del layer
+                    return Response({
+                        'parcel_id': parcel_id,
+                        'service': service,
+                        'layer_name': layer_name,
+                        'attributes': attributes,
+                        'geometry': geometry
+                    })
+            del layer
+
+        return Response({'error': 'Parcel not found'}, status=404)
+    except Exception as e:
+        return Response({'error': f'Error: {str(e)}'}, status=500)
