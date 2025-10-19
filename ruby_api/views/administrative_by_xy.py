@@ -1,36 +1,29 @@
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-import requests
 from xml.etree import ElementTree as ET
 
+import requests
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
-def parse_prg_feature_info(xml_content):
+
+def parse_gml_response(xml_content):
     try:
         root = ET.fromstring(xml_content)
-        features = []
+        data = {}
 
-        for feature_member in root.findall('.//{http://www.opengis.net/gml}featureMember'):
-            feature_data = {}
-            for layer in feature_member:
-                for attribute in layer:
-                    name = attribute.get('Name', '')
-                    text = attribute.text or ''
-                    text = text.strip()
-                    if text and not text.startswith('<') and not text.startswith('http'):
-                        feature_data[name] = text
+        for elem in root.iter():
+            tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
 
-            if feature_data:
-                features.append(feature_data)
+            if elem.text and elem.text.strip() and tag not in ['FeatureCollection', 'featureMember', 'boundedBy', 'Box',
+                                                               'coordinates']:
+                data[tag] = elem.text.strip()
 
-        return features
-    except Exception as e:
-        return []
+        return data
+    except Exception:
+        return {}
 
 
-def get_administrative_unit(x, y, epsg, layer_name):
-    buffer = 50
-    width = 101
-    height = 101
+def get_administrative_info(x, y, epsg, layer_name):
+    buffer = 100
     bbox = f"{x - buffer},{y - buffer},{x + buffer},{y + buffer}"
 
     params = {
@@ -40,28 +33,22 @@ def get_administrative_unit(x, y, epsg, layer_name):
         'LAYERS': layer_name,
         'QUERY_LAYERS': layer_name,
         'CRS': f'EPSG:{epsg}',
-        'WIDTH': str(width),
-        'HEIGHT': str(height),
-        'I': str(width // 2),
-        'J': str(height // 2),
-        'INFO_FORMAT': 'text/xml',
+        'WIDTH': '101',
+        'HEIGHT': '101',
+        'I': '50',
+        'J': '50',
+        'INFO_FORMAT': 'application/vnd.ogc.gml',
         'BBOX': bbox
     }
 
-    url = 'https://integracja.gugik.gov.pl/cgi-bin/KrajowaIntegracjaEwidencjiGruntow'
+    url = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WMS/AdministrativeBoundaries'
 
     try:
         response = requests.get(url, params=params, timeout=30)
         response.raise_for_status()
-
-        features = parse_prg_feature_info(response.content)
-
-        if features:
-            return features[0]
-        return None
-
-    except Exception as e:
-        return None
+        return parse_gml_response(response.content)
+    except Exception:
+        return {}
 
 
 @api_view(['GET'])
@@ -79,9 +66,9 @@ def get_commune_by_xy(request):
     except ValueError:
         return Response({'error': 'Invalid coordinates'}, status=400)
 
-    obreby_data = get_administrative_unit(x, y, epsg, 'obreby')
+    data = get_administrative_info(x, y, epsg, 'A03_Granice_gmin')
 
-    if not obreby_data:
+    if not data:
         return Response({
             'error': 'Commune not found at coordinates',
             'coordinates': {'x': x, 'y': y, 'epsg': epsg}
@@ -90,10 +77,10 @@ def get_commune_by_xy(request):
     return Response({
         'coordinates': {'x': x, 'y': y, 'epsg': epsg},
         'commune': {
-            'name': obreby_data.get('Gmina', ''),
-            'obreb': obreby_data.get('Obręb', ''),
-            'wojewodztwo': obreby_data.get('Województwo', ''),
-            'powiat': obreby_data.get('Powiat', '')
+            'name': data.get('JPT_NAZWA_', ''),
+            'teryt': data.get('JPT_KOD_JE', ''),
+            'type': data.get('JPT_SJR_KO', ''),
+            'regon': data.get('REGON', '')
         },
         'source': 'PRG'
     })
@@ -114,9 +101,9 @@ def get_county_by_xy(request):
     except ValueError:
         return Response({'error': 'Invalid coordinates'}, status=400)
 
-    dzialki_data = get_administrative_unit(x, y, epsg, 'dzialki')
+    data = get_administrative_info(x, y, epsg, 'A02_Granice_powiatow')
 
-    if not dzialki_data:
+    if not data:
         return Response({
             'error': 'County not found at coordinates',
             'coordinates': {'x': x, 'y': y, 'epsg': epsg}
@@ -125,8 +112,9 @@ def get_county_by_xy(request):
     return Response({
         'coordinates': {'x': x, 'y': y, 'epsg': epsg},
         'county': {
-            'name': dzialki_data.get('Powiat', ''),
-            'wojewodztwo': dzialki_data.get('Województwo', '')
+            'name': data.get('JPT_NAZWA_', ''),
+            'teryt': data.get('JPT_KOD_JE', ''),
+            'regon': data.get('REGON', '')
         },
         'source': 'PRG'
     })
@@ -147,9 +135,9 @@ def get_voivodeship_by_xy(request):
     except ValueError:
         return Response({'error': 'Invalid coordinates'}, status=400)
 
-    dzialki_data = get_administrative_unit(x, y, epsg, 'dzialki')
+    data = get_administrative_info(x, y, epsg, 'A01_Granice_wojewodztw')
 
-    if not dzialki_data:
+    if not data:
         return Response({
             'error': 'Voivodeship not found at coordinates',
             'coordinates': {'x': x, 'y': y, 'epsg': epsg}
@@ -158,7 +146,42 @@ def get_voivodeship_by_xy(request):
     return Response({
         'coordinates': {'x': x, 'y': y, 'epsg': epsg},
         'voivodeship': {
-            'name': dzialki_data.get('Województwo', '')
+            'name': data.get('JPT_NAZWA_', ''),
+            'teryt': data.get('JPT_KOD_JE', ''),
+            'regon': data.get('REGON', '')
+        },
+        'source': 'PRG'
+    })
+
+
+@api_view(['GET'])
+def get_region_by_xy(request):
+    x = request.query_params.get('x')
+    y = request.query_params.get('y')
+    epsg = request.query_params.get('epsg', '2180')
+
+    if not x or not y:
+        return Response({'error': 'x and y coordinates required'}, status=400)
+
+    try:
+        x = float(x)
+        y = float(y)
+    except ValueError:
+        return Response({'error': 'Invalid coordinates'}, status=400)
+
+    data = get_administrative_info(x, y, epsg, 'A06_Granice_obrebow_ewidencyjnych')
+
+    if not data:
+        return Response({
+            'error': 'Region not found at coordinates',
+            'coordinates': {'x': x, 'y': y, 'epsg': epsg}
+        }, status=404)
+
+    return Response({
+        'coordinates': {'x': x, 'y': y, 'epsg': epsg},
+        'region': {
+            'name': data.get('JPT_NAZWA_', ''),
+            'teryt': data.get('JPT_KOD_JE', '')
         },
         'source': 'PRG'
     })
