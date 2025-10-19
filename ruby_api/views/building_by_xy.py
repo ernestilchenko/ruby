@@ -8,14 +8,7 @@ from rest_framework.response import Response
 
 from data.wfs_data import WFS_SERVICES
 from ruby.qgis_manager import QGISManager
-
-
-def qvariant_to_python(value):
-    if isinstance(value, QVariant):
-        if value.isNull():
-            return None
-        return value.value()
-    return value
+from ruby_api.utils import qvariant_to_python
 
 
 def parse_gugik_feature_info(xml_content):
