@@ -117,6 +117,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATICFILES_DIRS = [BASE_DIR / 'static']
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -141,4 +142,12 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'Ruby API',
     'DESCRIPTION': 'Polish cadastral data API',
     'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+        'displayOperationId': False,
+    },
+    'SWAGGER_UI_FAVICON_HREF': '/static/images/icon.png',
+    'COMPONENT_SPLIT_REQUEST': True,
 }
