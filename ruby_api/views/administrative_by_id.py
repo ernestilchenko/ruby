@@ -2,6 +2,7 @@ from xml.etree import ElementTree as ET
 
 import requests
 from django.core.cache import cache
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiExample
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -59,6 +60,46 @@ def parse_wfs_multi_response(xml_content, layer_name):
         return []
 
 
+@extend_schema(
+    summary="Pobierz obręb ewidencyjny po ID",
+    description="Zwraca informacje o obrębie ewidencyjnym na podstawie identyfikatora TERYT z usługi PRG.",
+    parameters=[
+        OpenApiParameter(
+            name='region_id',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Identyfikator obrębu ewidencyjnego (format: WWPPGG_R.OOOO)',
+            examples=[
+                OpenApiExample('Przykład Kraków', value='126301_1.0001'),
+                OpenApiExample('Przykład Warszawa', value='146501_1.0001'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane obrębu ewidencyjnego',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'region_id': '126301_1.0001',
+                        'region': {
+                            'name': 'Krowodrza',
+                            'teryt': '126301_1.0001',
+                            'regon': '12345678901234'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowy format region_id'),
+        404: OpenApiResponse(description='Obręb nie znaleziony'),
+        500: OpenApiResponse(description='Błąd serwera')
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_region_by_id(request):
     region_id = request.query_params.get('region_id')
@@ -114,6 +155,60 @@ def get_region_by_id(request):
         return Response({'error': f'Error: {str(e)}', 'region_id': region_id}, status=500)
 
 
+@extend_schema(
+    summary="Wyszukaj obręb ewidencyjny po nazwie lub ID",
+    description="Zwraca listę obrębów ewidencyjnych pasujących do zapytania (po nazwie) lub pojedynczy obręb (po ID TERYT).",
+    parameters=[
+        OpenApiParameter(
+            name='query',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Nazwa obrębu (wyszukiwanie częściowe) lub ID TERYT (format: WWPPGG_R.OOOO)',
+            examples=[
+                OpenApiExample('Wyszukiwanie po nazwie', value='Krowodrza'),
+                OpenApiExample('Wyszukiwanie po ID', value='126301_1.0001'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Lista obrębów lub pojedynczy obręb',
+            examples=[
+                OpenApiExample(
+                    'Wyniki wyszukiwania po nazwie',
+                    value={
+                        'query': 'Krowodrza',
+                        'regions': [
+                            {
+                                'name': 'Krowodrza',
+                                'teryt': '126301_1.0001',
+                                'regon': '12345678901234'
+                            }
+                        ],
+                        'source': 'PRG'
+                    }
+                ),
+                OpenApiExample(
+                    'Wynik wyszukiwania po ID',
+                    value={
+                        'region_id': '126301_1.0001',
+                        'region': {
+                            'name': 'Krowodrza',
+                            'teryt': '126301_1.0001',
+                            'regon': '12345678901234'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Brak parametru query'),
+        404: OpenApiResponse(description='Nie znaleziono obrębów'),
+        500: OpenApiResponse(description='Błąd serwera')
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_region_by_name_or_id(request):
     query = request.query_params.get('query')
@@ -176,6 +271,47 @@ def get_region_by_name_or_id(request):
         return Response({'error': f'Error: {str(e)}', 'query': query}, status=500)
 
 
+@extend_schema(
+    summary="Pobierz gminę po ID",
+    description="Zwraca informacje o gminie na podstawie identyfikatora TERYT z usługi PRG.",
+    parameters=[
+        OpenApiParameter(
+            name='commune_id',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Identyfikator gminy (format: WWPPGG_R)',
+            examples=[
+                OpenApiExample('Przykład Kraków', value='126301_1'),
+                OpenApiExample('Przykład Warszawa', value='146501_1'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane gminy',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'commune_id': '126301_1',
+                        'commune': {
+                            'name': 'Kraków',
+                            'teryt': '126301_1',
+                            'type': '1',
+                            'regon': '12345678901234'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowy format commune_id'),
+        404: OpenApiResponse(description='Gmina nie znaleziona'),
+        500: OpenApiResponse(description='Błąd serwera')
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_commune_by_id(request):
     commune_id = request.query_params.get('commune_id')
@@ -231,6 +367,46 @@ def get_commune_by_id(request):
         return Response({'error': f'Error: {str(e)}', 'commune_id': commune_id}, status=500)
 
 
+@extend_schema(
+    summary="Pobierz powiat po ID",
+    description="Zwraca informacje o powiecie na podstawie identyfikatora TERYT z usługi PRG.",
+    parameters=[
+        OpenApiParameter(
+            name='county_id',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Identyfikator powiatu (format: WWPP)',
+            examples=[
+                OpenApiExample('Przykład Kraków', value='1206'),
+                OpenApiExample('Przykład Warszawa', value='1465'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane powiatu',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'county_id': '1206',
+                        'county': {
+                            'name': 'krakowski',
+                            'teryt': '1206',
+                            'regon': '12345678901234'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowy format county_id'),
+        404: OpenApiResponse(description='Powiat nie znaleziony'),
+        500: OpenApiResponse(description='Błąd serwera')
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_county_by_id(request):
     county_id = request.query_params.get('county_id')
@@ -285,6 +461,46 @@ def get_county_by_id(request):
         return Response({'error': f'Error: {str(e)}', 'county_id': county_id}, status=500)
 
 
+@extend_schema(
+    summary="Pobierz województwo po ID",
+    description="Zwraca informacje o województwie na podstawie identyfikatora TERYT z usługi PRG.",
+    parameters=[
+        OpenApiParameter(
+            name='voivodeship_id',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Identyfikator województwa (format: WW)',
+            examples=[
+                OpenApiExample('Małopolskie', value='12'),
+                OpenApiExample('Mazowieckie', value='14'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane województwa',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'voivodeship_id': '12',
+                        'voivodeship': {
+                            'name': 'małopolskie',
+                            'teryt': '12',
+                            'regon': '12345678901234'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowy format voivodeship_id'),
+        404: OpenApiResponse(description='Województwo nie znalezione'),
+        500: OpenApiResponse(description='Błąd serwera')
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_voivodeship_by_id(request):
     voivodeship_id = request.query_params.get('voivodeship_id')

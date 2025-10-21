@@ -2,12 +2,60 @@ from django.core.cache import cache
 from qgis.core import QgsVectorLayer, QgsDataSourceUri
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiExample
 
 from data.wfs_data import WFS_SERVICES
 from ruby.qgis_manager import QGISManager
 from ruby_api.utils import qvariant_to_python
 
 
+@extend_schema(
+    summary="Wyszukaj działkę po ID",
+    description="Pobiera dane działki z WFS na podstawie identyfikatora. Zwraca atrybuty i geometrię działki.",
+    parameters=[
+        OpenApiParameter(
+            name='parcel_id',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Identyfikator działki (format: WWPPGG_O.NNNN.AR/NN)',
+            examples=[
+                OpenApiExample('Przykład Kraków', value='1206_1.0001.123/1'),
+                OpenApiExample('Przykład Białystok', value='2061_1.0001.456/2'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane działki',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'parcel_id': '1206_1.0001.123/1',
+                        'service': {
+                            'id': 'PL.PZGiK.1',
+                            'organization': 'Starosta Powiatu Krakowskiego',
+                            'teryt': '1206',
+                            'url': 'https://wms.powiat.krakow.pl:1518/iip/ows'
+                        },
+                        'layer_name': 'ms:dzialki',
+                        'attributes': {
+                            'ID_DZIALKI': '1206_1.0001.123/1',
+                            'POWIERZCHNIA': 1234.56,
+                            'NUMER': '123/1'
+                        },
+                        'geometry': 'POLYGON((...))'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowy format parcel_id'),
+        404: OpenApiResponse(description='Działka nie znaleziona'),
+        500: OpenApiResponse(description='Błąd serwera')
+    },
+    tags=['Działki']
+)
 @api_view(['GET'])
 def search_parcel_by_id(request):
     parcel_id = request.query_params.get('parcel_id')

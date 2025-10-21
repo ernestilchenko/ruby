@@ -1,8 +1,11 @@
 from django.urls import path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from .views import *
 
 urlpatterns = [
+    path('schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('search-parcel/', search_parcel_by_id, name='search_parcel_by_id'),
     path('search-parcel-xy/', search_parcel_by_xy, name='search_parcel_by_xy'),
     path('search-building/', search_building_by_id, name='search_building_by_id'),

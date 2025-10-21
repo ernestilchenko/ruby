@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiExample
 from qgis.core import QgsVectorLayer, QgsDataSourceUri
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -8,6 +9,53 @@ from ruby.qgis_manager import QGISManager
 from ruby_api.utils import qvariant_to_python
 
 
+@extend_schema(
+    summary="Wyszukaj budynek po ID",
+    description="Pobiera dane budynku z WFS na podstawie identyfikatora. Zwraca atrybuty i geometrię budynku.",
+    parameters=[
+        OpenApiParameter(
+            name='building_id',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Identyfikator budynku',
+            examples=[
+                OpenApiExample('Przykład Kraków', value='1206010101.123.456'),
+                OpenApiExample('Przykład Warszawa', value='1465010101.789.012'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane budynku',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'building_id': '1206010101.123.456',
+                        'service': {
+                            'id': 'PL.PZGiK.1',
+                            'organization': 'Starosta Powiatu Krakowskiego',
+                            'teryt': '1206',
+                            'url': 'https://wms.powiat.krakow.pl:1518/iip/ows'
+                        },
+                        'layer_name': 'ms:budynki',
+                        'attributes': {
+                            'ID_BUDYNKU': '1206010101.123.456',
+                            'FUNKCJA': 'mieszkalny',
+                            'STATUS': 'istniejący'
+                        },
+                        'geometry': 'POLYGON((...))'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowy format building_id'),
+        404: OpenApiResponse(description='Budynek nie znaleziony'),
+        500: OpenApiResponse(description='Błąd serwera')
+    },
+    tags=['Budynki']
+)
 @api_view(['GET'])
 def search_building_by_id(request):
     building_id = request.query_params.get('building_id')

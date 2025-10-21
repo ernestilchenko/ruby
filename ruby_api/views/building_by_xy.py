@@ -2,6 +2,7 @@ from xml.etree import ElementTree as ET
 
 import requests
 from django.core.cache import cache
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiExample
 from qgis.core import QgsVectorLayer, QgsDataSourceUri
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -34,6 +35,92 @@ def parse_gugik_feature_info(xml_content):
         return []
 
 
+@extend_schema(
+    summary="Wyszukaj budynek po współrzędnych",
+    description="Pobiera dane budynku na podstawie współrzędnych XY. Najpierw odpytuje GUGiK WMS, a następnie pobiera szczegóły z WFS.",
+    parameters=[
+        OpenApiParameter(
+            name='x',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna X',
+            examples=[
+                OpenApiExample('EPSG:2180', value=500000.0),
+                OpenApiExample('EPSG:4326', value=19.9449799),
+            ]
+        ),
+        OpenApiParameter(
+            name='y',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna Y',
+            examples=[
+                OpenApiExample('EPSG:2180', value=250000.0),
+                OpenApiExample('EPSG:4326', value=50.0646501),
+            ]
+        ),
+        OpenApiParameter(
+            name='epsg',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description='Kod EPSG układu współrzędnych',
+            default='2180',
+            examples=[
+                OpenApiExample('EPSG:2180 (domyślny)', value='2180'),
+                OpenApiExample('EPSG:4326 (WGS84)', value='4326'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane budynku',
+            examples=[
+                OpenApiExample(
+                    'Sukces z geometrią',
+                    value={
+                        'coordinates': {'x': 500000.0, 'y': 250000.0, 'epsg': '2180'},
+                        'teryt': '1206',
+                        'service': {
+                            'id': 'PL.PZGiK.1',
+                            'organization': 'Starosta Powiatu Krakowskiego',
+                            'teryt': '1206',
+                            'url': 'https://wms.powiat.krakow.pl:1518/iip/ows'
+                        },
+                        'building_id': '1206010101.123.456',
+                        'attributes': {
+                            'ID_BUDYNKU': '1206010101.123.456',
+                            'FUNKCJA': 'mieszkalny',
+                            'STATUS': 'istniejący'
+                        },
+                        'geometry': 'POLYGON((...))'
+                    }
+                ),
+                OpenApiExample(
+                    'Bez dostępnej geometrii',
+                    value={
+                        'coordinates': {'x': 500000.0, 'y': 250000.0, 'epsg': '2180'},
+                        'teryt': '1206',
+                        'features': [
+                            {
+                                'Identyfikator budynku': '1206010101.123.456',
+                                'Funkcja ogólna budynku': 'mieszkalny'
+                            }
+                        ],
+                        'source': 'KrajowaIntegracjaEwidencjiGruntow',
+                        'note': 'WFS service not available for geometry'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowe współrzędne'),
+        404: OpenApiResponse(description='Nie znaleziono budynku w podanych współrzędnych'),
+        500: OpenApiResponse(description='Błąd serwera')
+    },
+    tags=['Budynki']
+)
 @api_view(['GET'])
 def search_building_by_xy(request):
     x = request.query_params.get('x')

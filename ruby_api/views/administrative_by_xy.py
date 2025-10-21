@@ -2,6 +2,7 @@ from xml.etree import ElementTree as ET
 
 import requests
 from django.core.cache import cache
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiExample
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -52,6 +53,69 @@ def get_administrative_info(x, y, epsg, layer_name):
         return {}
 
 
+@extend_schema(
+    summary="Pobierz gminę po współrzędnych",
+    description="Zwraca informacje o gminie na podstawie współrzędnych XY z usługi PRG (Państwowy Rejestr Granic).",
+    parameters=[
+        OpenApiParameter(
+            name='x',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna X',
+            examples=[
+                OpenApiExample('EPSG:2180', value=500000.0),
+                OpenApiExample('EPSG:4326', value=19.9449799),
+            ]
+        ),
+        OpenApiParameter(
+            name='y',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna Y',
+            examples=[
+                OpenApiExample('EPSG:2180', value=250000.0),
+                OpenApiExample('EPSG:4326', value=50.0646501),
+            ]
+        ),
+        OpenApiParameter(
+            name='epsg',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description='Kod EPSG układu współrzędnych',
+            default='2180',
+            examples=[
+                OpenApiExample('EPSG:2180 (domyślny)', value='2180'),
+                OpenApiExample('EPSG:4326 (WGS84)', value='4326'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane gminy',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'coordinates': {'x': 500000.0, 'y': 250000.0, 'epsg': '2180'},
+                        'commune': {
+                            'name': 'Kraków',
+                            'teryt': '126301_1',
+                            'type': '1',
+                            'regon': '12345678901234'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowe współrzędne'),
+        404: OpenApiResponse(description='Gmina nie znaleziona w podanych współrzędnych'),
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_commune_by_xy(request):
     x = request.query_params.get('x')
@@ -96,6 +160,68 @@ def get_commune_by_xy(request):
     return Response(result)
 
 
+@extend_schema(
+    summary="Pobierz powiat po współrzędnych",
+    description="Zwraca informacje o powiecie na podstawie współrzędnych XY z usługi PRG (Państwowy Rejestr Granic).",
+    parameters=[
+        OpenApiParameter(
+            name='x',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna X',
+            examples=[
+                OpenApiExample('EPSG:2180', value=500000.0),
+                OpenApiExample('EPSG:4326', value=19.9449799),
+            ]
+        ),
+        OpenApiParameter(
+            name='y',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna Y',
+            examples=[
+                OpenApiExample('EPSG:2180', value=250000.0),
+                OpenApiExample('EPSG:4326', value=50.0646501),
+            ]
+        ),
+        OpenApiParameter(
+            name='epsg',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description='Kod EPSG układu współrzędnych',
+            default='2180',
+            examples=[
+                OpenApiExample('EPSG:2180 (domyślny)', value='2180'),
+                OpenApiExample('EPSG:4326 (WGS84)', value='4326'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane powiatu',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'coordinates': {'x': 500000.0, 'y': 250000.0, 'epsg': '2180'},
+                        'county': {
+                            'name': 'krakowski',
+                            'teryt': '1206',
+                            'regon': '12345678901234'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowe współrzędne'),
+        404: OpenApiResponse(description='Powiat nie znaleziony w podanych współrzędnych'),
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_county_by_xy(request):
     x = request.query_params.get('x')
@@ -139,6 +265,68 @@ def get_county_by_xy(request):
     return Response(result)
 
 
+@extend_schema(
+    summary="Pobierz województwo po współrzędnych",
+    description="Zwraca informacje o województwie na podstawie współrzędnych XY z usługi PRG (Państwowy Rejestr Granic).",
+    parameters=[
+        OpenApiParameter(
+            name='x',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna X',
+            examples=[
+                OpenApiExample('EPSG:2180', value=500000.0),
+                OpenApiExample('EPSG:4326', value=19.9449799),
+            ]
+        ),
+        OpenApiParameter(
+            name='y',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna Y',
+            examples=[
+                OpenApiExample('EPSG:2180', value=250000.0),
+                OpenApiExample('EPSG:4326', value=50.0646501),
+            ]
+        ),
+        OpenApiParameter(
+            name='epsg',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description='Kod EPSG układu współrzędnych',
+            default='2180',
+            examples=[
+                OpenApiExample('EPSG:2180 (domyślny)', value='2180'),
+                OpenApiExample('EPSG:4326 (WGS84)', value='4326'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane województwa',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'coordinates': {'x': 500000.0, 'y': 250000.0, 'epsg': '2180'},
+                        'voivodeship': {
+                            'name': 'małopolskie',
+                            'teryt': '12',
+                            'regon': '12345678901234'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowe współrzędne'),
+        404: OpenApiResponse(description='Województwo nie znalezione w podanych współrzędnych'),
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_voivodeship_by_xy(request):
     x = request.query_params.get('x')
@@ -182,6 +370,67 @@ def get_voivodeship_by_xy(request):
     return Response(result)
 
 
+@extend_schema(
+    summary="Pobierz obręb ewidencyjny po współrzędnych",
+    description="Zwraca informacje o obrębie ewidencyjnym na podstawie współrzędnych XY z usługi PRG (Państwowy Rejestr Granic).",
+    parameters=[
+        OpenApiParameter(
+            name='x',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna X',
+            examples=[
+                OpenApiExample('EPSG:2180', value=500000.0),
+                OpenApiExample('EPSG:4326', value=19.9449799),
+            ]
+        ),
+        OpenApiParameter(
+            name='y',
+            type=float,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='Współrzędna Y',
+            examples=[
+                OpenApiExample('EPSG:2180', value=250000.0),
+                OpenApiExample('EPSG:4326', value=50.0646501),
+            ]
+        ),
+        OpenApiParameter(
+            name='epsg',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description='Kod EPSG układu współrzędnych',
+            default='2180',
+            examples=[
+                OpenApiExample('EPSG:2180 (domyślny)', value='2180'),
+                OpenApiExample('EPSG:4326 (WGS84)', value='4326'),
+            ]
+        )
+    ],
+    responses={
+        200: OpenApiResponse(
+            description='Dane obrębu ewidencyjnego',
+            examples=[
+                OpenApiExample(
+                    'Sukces',
+                    value={
+                        'coordinates': {'x': 500000.0, 'y': 250000.0, 'epsg': '2180'},
+                        'region': {
+                            'name': 'Krowodrza',
+                            'teryt': '126301_1.0001'
+                        },
+                        'source': 'PRG'
+                    }
+                )
+            ]
+        ),
+        400: OpenApiResponse(description='Nieprawidłowe współrzędne'),
+        404: OpenApiResponse(description='Obręb nie znaleziony w podanych współrzędnych'),
+    },
+    tags=['Podziały administracyjne']
+)
 @api_view(['GET'])
 def get_region_by_xy(request):
     x = request.query_params.get('x')

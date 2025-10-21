@@ -40,7 +40,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'ruby_api.apps.RubyApiConfig'
+    'ruby_api.apps.RubyApiConfig',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -130,4 +131,14 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': 'redis://redis:6379/1',
     }
+}
+
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Ruby API',
+    'DESCRIPTION': 'Polish cadastral data API',
+    'VERSION': '1.0.0',
 }

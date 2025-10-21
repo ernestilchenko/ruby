@@ -1,5 +1,6 @@
 amqp==5.3.1
 asgiref==3.10.0
+attrs==25.4.0
 billiard==4.2.2
 celery==5.5.3
 certifi==2025.10.5
@@ -11,9 +12,13 @@ click-repl==0.3.0
 Django==5.2.7
 django-filter==25.2
 djangorestframework==3.16.1
+drf-spectacular==0.28.0
 future==1.0.0
 geopandas==1.1.1
 idna==3.11
+inflection==0.5.1
+jsonschema==4.25.1
+jsonschema-specifications==2025.9.1
 kombu==5.5.4
 lxml==6.0.2
 Markdown==3.9
@@ -29,12 +34,15 @@ python-dotenv==1.1.1
 pytz==2025.2
 PyYAML==6.0.3
 redis==6.4.0
+referencing==0.37.0
 requests==2.32.5
+rpds-py==0.27.1
 serializers==0.2.4
 shapely==2.1.2
 six==1.17.0
 sqlparse==0.5.3
 tzdata==2025.2
+uritemplate==4.2.0
 urllib3==2.5.0
 vine==5.1.0
 wcwidth==0.2.14
