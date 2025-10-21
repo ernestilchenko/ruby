@@ -1,9 +1,62 @@
-from qgis.core import QgsVectorLayer, QgsDataSourceUri
+from xml.etree import ElementTree as ET
+
+import requests
+from django.core.cache import cache
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from ruby.qgis_manager import QGISManager
-from ruby_api.utils import qvariant_to_python
+
+def parse_wfs_response(xml_content, layer_name):
+    try:
+        root = ET.fromstring(xml_content)
+        namespaces = {
+            'wfs': 'http://www.opengis.net/wfs/2.0',
+            'ms': 'http://mapserver.gis.umn.edu/mapserver',
+            'gml': 'http://www.opengis.net/gml/3.2'
+        }
+
+        features = root.findall(f'.//ms:{layer_name}', namespaces)
+
+        if not features:
+            return None
+
+        feature = features[0]
+        data = {}
+
+        for child in feature:
+            tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+            if child.text and tag not in ['GEOMETRY', 'SHAPE', 'geometry', 'boundedBy']:
+                data[tag] = child.text.strip()
+
+        return data
+    except Exception:
+        return None
+
+
+def parse_wfs_multi_response(xml_content, layer_name):
+    try:
+        root = ET.fromstring(xml_content)
+        namespaces = {
+            'wfs': 'http://www.opengis.net/wfs/2.0',
+            'ms': 'http://mapserver.gis.umn.edu/mapserver',
+            'gml': 'http://www.opengis.net/gml/3.2'
+        }
+
+        features = root.findall(f'.//ms:{layer_name}', namespaces)
+
+        results = []
+        for feature in features:
+            data = {}
+            for child in feature:
+                tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+                if child.text and tag not in ['GEOMETRY', 'SHAPE', 'geometry', 'boundedBy']:
+                    data[tag] = child.text.strip()
+            if data:
+                results.append(data)
+
+        return results
+    except Exception:
+        return []
 
 
 @api_view(['GET'])
@@ -17,41 +70,48 @@ def get_region_by_id(request):
     if len(parts) != 2 or '.' not in parts[1]:
         return Response({'error': 'Invalid region_id format. Expected format: WWPPGG_R.OOOO'}, status=400)
 
+    cache_key = f'region_{region_id}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     try:
-        qgs = QGISManager.get_application()
+        params = {
+            'SERVICE': 'WFS',
+            'VERSION': '2.0.0',
+            'REQUEST': 'GetFeature',
+            'TYPENAME': 'ms:A06_Granice_obrebow_ewidencyjnych',
+            'FILTER': f"<Filter><PropertyIsEqualTo><PropertyName>JPT_KOD_JE</PropertyName><Literal>{region_id}</Literal></PropertyIsEqualTo></Filter>",
+            'OUTPUTFORMAT': 'GML3'
+        }
 
-        uri = QgsDataSourceUri()
-        uri.setParam('url', 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries')
-        uri.setParam('typename', 'A06_Granice_obrebow_ewidencyjnych')
-        uri.setParam('version', '2.0.0')
-        uri.setParam('filter', f"JPT_KOD_JE='{region_id}'")
+        url = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries'
 
-        layer = QgsVectorLayer(uri.uri(), "region", "WFS")
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
 
-        if layer.isValid():
-            features = list(layer.getFeatures())
+        data = parse_wfs_response(response.content, 'A06_Granice_obrebow_ewidencyjnych')
 
-            if features:
-                first_feature = features[0]
-                attributes = {field.name(): qvariant_to_python(value) for field, value in
-                              zip(layer.fields(), first_feature.attributes())}
+        if not data:
+            return Response({'error': 'Region not found', 'region_id': region_id}, status=404)
 
-                del layer
-                return Response({
-                    'region_id': region_id,
-                    'region': {
-                        'name': attributes.get('JPT_NAZWA_', ''),
-                        'teryt': attributes.get('JPT_KOD_JE', ''),
-                        'regon': attributes.get('REGON', '')
-                    },
-                    'source': 'PRG'
-                })
+        result = {
+            'region_id': region_id,
+            'region': {
+                'name': data.get('JPT_NAZWA_', ''),
+                'teryt': data.get('JPT_KOD_JE', ''),
+                'regon': data.get('REGON', '')
+            },
+            'source': 'PRG'
+        }
 
-        del layer
-        return Response({'error': 'Region not found'}, status=404)
+        cache.set(cache_key, result, timeout=3600)
+        return Response(result)
 
+    except requests.RequestException as e:
+        return Response({'error': f'Request failed: {str(e)}', 'region_id': region_id}, status=500)
     except Exception as e:
-        return Response({'error': f'Error: {str(e)}'}, status=500)
+        return Response({'error': f'Error: {str(e)}', 'region_id': region_id}, status=500)
 
 
 @api_view(['GET'])
@@ -67,47 +127,53 @@ def get_region_by_name_or_id(request):
         request.query_params._mutable = False
         return get_region_by_id(request)
 
+    cache_key = f'region_search_{query}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     try:
-        qgs = QGISManager.get_application()
+        params = {
+            'SERVICE': 'WFS',
+            'VERSION': '2.0.0',
+            'REQUEST': 'GetFeature',
+            'TYPENAME': 'ms:A06_Granice_obrebow_ewidencyjnych',
+            'FILTER': f"<Filter><PropertyIsLike wildCard='*' singleChar='?' escapeChar='!'><PropertyName>JPT_NAZWA_</PropertyName><Literal>*{query}*</Literal></PropertyIsLike></Filter>",
+            'OUTPUTFORMAT': 'GML3',
+            'COUNT': '10'
+        }
 
-        uri = QgsDataSourceUri()
-        uri.setParam('url', 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries')
-        uri.setParam('typename', 'A06_Granice_obrebow_ewidencyjnych')
-        uri.setParam('version', '2.0.0')
-        uri.setParam('filter', f"JPT_NAZWA_ LIKE '%{query}%'")
+        url = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries'
 
-        layer = QgsVectorLayer(uri.uri(), "regions", "WFS")
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
 
-        if layer.isValid():
-            features = list(layer.getFeatures())
+        results_data = parse_wfs_multi_response(response.content, 'A06_Granice_obrebow_ewidencyjnych')
 
-            results = []
-            for feature in features[:10]:
-                attributes = {field.name(): qvariant_to_python(value) for field, value in
-                              zip(layer.fields(), feature.attributes())}
+        if not results_data:
+            return Response({'error': 'No regions found', 'query': query}, status=404)
 
-                results.append({
-                    'name': attributes.get('JPT_NAZWA_', ''),
-                    'teryt': attributes.get('JPT_KOD_JE', ''),
-                    'regon': attributes.get('REGON', '')
-                })
-
-            del layer
-
-            if not results:
-                return Response({'error': 'No regions found'}, status=404)
-
-            return Response({
-                'query': query,
-                'regions': results,
-                'source': 'PRG'
+        results = []
+        for data in results_data:
+            results.append({
+                'name': data.get('JPT_NAZWA_', ''),
+                'teryt': data.get('JPT_KOD_JE', ''),
+                'regon': data.get('REGON', '')
             })
 
-        del layer
-        return Response({'error': 'Service error'}, status=500)
+        result = {
+            'query': query,
+            'regions': results,
+            'source': 'PRG'
+        }
 
+        cache.set(cache_key, result, timeout=3600)
+        return Response(result)
+
+    except requests.RequestException as e:
+        return Response({'error': f'Request failed: {str(e)}', 'query': query}, status=500)
     except Exception as e:
-        return Response({'error': f'Error: {str(e)}'}, status=500)
+        return Response({'error': f'Error: {str(e)}', 'query': query}, status=500)
 
 
 @api_view(['GET'])
@@ -120,42 +186,49 @@ def get_commune_by_id(request):
     if '_' not in commune_id:
         return Response({'error': 'Invalid commune_id format. Expected format: WWPPGG_R'}, status=400)
 
+    cache_key = f'commune_{commune_id}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     try:
-        qgs = QGISManager.get_application()
+        params = {
+            'SERVICE': 'WFS',
+            'VERSION': '2.0.0',
+            'REQUEST': 'GetFeature',
+            'TYPENAME': 'ms:A03_Granice_gmin',
+            'FILTER': f"<Filter><PropertyIsEqualTo><PropertyName>JPT_KOD_JE</PropertyName><Literal>{commune_id}</Literal></PropertyIsEqualTo></Filter>",
+            'OUTPUTFORMAT': 'GML3'
+        }
 
-        uri = QgsDataSourceUri()
-        uri.setParam('url', 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries')
-        uri.setParam('typename', 'A03_Granice_gmin')
-        uri.setParam('version', '2.0.0')
-        uri.setParam('filter', f"JPT_KOD_JE='{commune_id}'")
+        url = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries'
 
-        layer = QgsVectorLayer(uri.uri(), "commune", "WFS")
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
 
-        if layer.isValid():
-            features = list(layer.getFeatures())
+        data = parse_wfs_response(response.content, 'A03_Granice_gmin')
 
-            if features:
-                first_feature = features[0]
-                attributes = {field.name(): qvariant_to_python(value) for field, value in
-                              zip(layer.fields(), first_feature.attributes())}
+        if not data:
+            return Response({'error': 'Commune not found', 'commune_id': commune_id}, status=404)
 
-                del layer
-                return Response({
-                    'commune_id': commune_id,
-                    'commune': {
-                        'name': attributes.get('JPT_NAZWA_', ''),
-                        'teryt': attributes.get('JPT_KOD_JE', ''),
-                        'type': attributes.get('JPT_SJR_KO', ''),
-                        'regon': attributes.get('REGON', '')
-                    },
-                    'source': 'PRG'
-                })
+        result = {
+            'commune_id': commune_id,
+            'commune': {
+                'name': data.get('JPT_NAZWA_', ''),
+                'teryt': data.get('JPT_KOD_JE', ''),
+                'type': data.get('JPT_SJR_KO', ''),
+                'regon': data.get('REGON', '')
+            },
+            'source': 'PRG'
+        }
 
-        del layer
-        return Response({'error': 'Commune not found'}, status=404)
+        cache.set(cache_key, result, timeout=3600)
+        return Response(result)
 
+    except requests.RequestException as e:
+        return Response({'error': f'Request failed: {str(e)}', 'commune_id': commune_id}, status=500)
     except Exception as e:
-        return Response({'error': f'Error: {str(e)}'}, status=500)
+        return Response({'error': f'Error: {str(e)}', 'commune_id': commune_id}, status=500)
 
 
 @api_view(['GET'])
@@ -168,41 +241,48 @@ def get_county_by_id(request):
     if len(county_id) != 4:
         return Response({'error': 'Invalid county_id format. Expected format: WWPP'}, status=400)
 
+    cache_key = f'county_{county_id}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     try:
-        qgs = QGISManager.get_application()
+        params = {
+            'SERVICE': 'WFS',
+            'VERSION': '2.0.0',
+            'REQUEST': 'GetFeature',
+            'TYPENAME': 'ms:A02_Granice_powiatow',
+            'FILTER': f"<Filter><PropertyIsLike wildCard='*' singleChar='?' escapeChar='!'><PropertyName>JPT_KOD_JE</PropertyName><Literal>{county_id}*</Literal></PropertyIsLike></Filter>",
+            'OUTPUTFORMAT': 'GML3'
+        }
 
-        uri = QgsDataSourceUri()
-        uri.setParam('url', 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries')
-        uri.setParam('typename', 'A02_Granice_powiatow')
-        uri.setParam('version', '2.0.0')
-        uri.setParam('filter', f"JPT_KOD_JE LIKE '{county_id}%'")
+        url = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries'
 
-        layer = QgsVectorLayer(uri.uri(), "county", "WFS")
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
 
-        if layer.isValid():
-            features = list(layer.getFeatures())
+        data = parse_wfs_response(response.content, 'A02_Granice_powiatow')
 
-            if features:
-                first_feature = features[0]
-                attributes = {field.name(): qvariant_to_python(value) for field, value in
-                              zip(layer.fields(), first_feature.attributes())}
+        if not data:
+            return Response({'error': 'County not found', 'county_id': county_id}, status=404)
 
-                del layer
-                return Response({
-                    'county_id': county_id,
-                    'county': {
-                        'name': attributes.get('JPT_NAZWA_', ''),
-                        'teryt': attributes.get('JPT_KOD_JE', ''),
-                        'regon': attributes.get('REGON', '')
-                    },
-                    'source': 'PRG'
-                })
+        result = {
+            'county_id': county_id,
+            'county': {
+                'name': data.get('JPT_NAZWA_', ''),
+                'teryt': data.get('JPT_KOD_JE', ''),
+                'regon': data.get('REGON', '')
+            },
+            'source': 'PRG'
+        }
 
-        del layer
-        return Response({'error': 'County not found'}, status=404)
+        cache.set(cache_key, result, timeout=3600)
+        return Response(result)
 
+    except requests.RequestException as e:
+        return Response({'error': f'Request failed: {str(e)}', 'county_id': county_id}, status=500)
     except Exception as e:
-        return Response({'error': f'Error: {str(e)}'}, status=500)
+        return Response({'error': f'Error: {str(e)}', 'county_id': county_id}, status=500)
 
 
 @api_view(['GET'])
@@ -215,38 +295,45 @@ def get_voivodeship_by_id(request):
     if len(voivodeship_id) != 2:
         return Response({'error': 'Invalid voivodeship_id format. Expected format: WW'}, status=400)
 
+    cache_key = f'voivodeship_{voivodeship_id}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     try:
-        qgs = QGISManager.get_application()
+        params = {
+            'SERVICE': 'WFS',
+            'VERSION': '2.0.0',
+            'REQUEST': 'GetFeature',
+            'TYPENAME': 'ms:A01_Granice_wojewodztw',
+            'FILTER': f"<Filter><PropertyIsLike wildCard='*' singleChar='?' escapeChar='!'><PropertyName>JPT_KOD_JE</PropertyName><Literal>{voivodeship_id}*</Literal></PropertyIsLike></Filter>",
+            'OUTPUTFORMAT': 'GML3'
+        }
 
-        uri = QgsDataSourceUri()
-        uri.setParam('url', 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries')
-        uri.setParam('typename', 'A01_Granice_wojewodztw')
-        uri.setParam('version', '2.0.0')
-        uri.setParam('filter', f"JPT_KOD_JE LIKE '{voivodeship_id}%'")
+        url = 'https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries'
 
-        layer = QgsVectorLayer(uri.uri(), "voivodeship", "WFS")
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
 
-        if layer.isValid():
-            features = list(layer.getFeatures())
+        data = parse_wfs_response(response.content, 'A01_Granice_wojewodztw')
 
-            if features:
-                first_feature = features[0]
-                attributes = {field.name(): qvariant_to_python(value) for field, value in
-                              zip(layer.fields(), first_feature.attributes())}
+        if not data:
+            return Response({'error': 'Voivodeship not found', 'voivodeship_id': voivodeship_id}, status=404)
 
-                del layer
-                return Response({
-                    'voivodeship_id': voivodeship_id,
-                    'voivodeship': {
-                        'name': attributes.get('JPT_NAZWA_', ''),
-                        'teryt': attributes.get('JPT_KOD_JE', ''),
-                        'regon': attributes.get('REGON', '')
-                    },
-                    'source': 'PRG'
-                })
+        result = {
+            'voivodeship_id': voivodeship_id,
+            'voivodeship': {
+                'name': data.get('JPT_NAZWA_', ''),
+                'teryt': data.get('JPT_KOD_JE', ''),
+                'regon': data.get('REGON', '')
+            },
+            'source': 'PRG'
+        }
 
-        del layer
-        return Response({'error': 'Voivodeship not found'}, status=404)
+        cache.set(cache_key, result, timeout=3600)
+        return Response(result)
 
+    except requests.RequestException as e:
+        return Response({'error': f'Request failed: {str(e)}', 'voivodeship_id': voivodeship_id}, status=500)
     except Exception as e:
-        return Response({'error': f'Error: {str(e)}'}, status=500)
+        return Response({'error': f'Error: {str(e)}', 'voivodeship_id': voivodeship_id}, status=500)

@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QVariant
+from django.core.cache import cache
 from qgis.core import QgsVectorLayer, QgsDataSourceUri
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -17,6 +17,11 @@ def search_parcel_by_id(request):
 
     if '_' not in parcel_id or len(parcel_id) < 4:
         return Response({'error': 'Invalid parcel_id format'}, status=400)
+
+    cache_key = f'parcel_{parcel_id}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
 
     try:
         qgs = QGISManager.get_application()
@@ -47,14 +52,18 @@ def search_parcel_by_id(request):
                                   zip(layer.fields(), first_feature.attributes())}
                     geometry = first_feature.geometry().asWkt()
 
-                    del layer
-                    return Response({
+                    result = {
                         'parcel_id': parcel_id,
                         'service': service,
                         'layer_name': layer_name,
                         'attributes': attributes,
                         'geometry': geometry
-                    })
+                    }
+
+                    cache.set(cache_key, result, timeout=3600)
+
+                    del layer
+                    return Response(result)
             del layer
 
         return Response({'error': 'Parcel not found'}, status=404)

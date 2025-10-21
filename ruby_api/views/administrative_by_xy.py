@@ -1,6 +1,7 @@
 from xml.etree import ElementTree as ET
 
 import requests
+from django.core.cache import cache
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -66,15 +67,21 @@ def get_commune_by_xy(request):
     except ValueError:
         return Response({'error': 'Invalid coordinates'}, status=400)
 
+    cache_key = f'commune_xy_{x}_{y}_{epsg}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     data = get_administrative_info(x, y, epsg, 'A03_Granice_gmin')
 
     if not data:
-        return Response({
+        result = {
             'error': 'Commune not found at coordinates',
             'coordinates': {'x': x, 'y': y, 'epsg': epsg}
-        }, status=404)
+        }
+        return Response(result, status=404)
 
-    return Response({
+    result = {
         'coordinates': {'x': x, 'y': y, 'epsg': epsg},
         'commune': {
             'name': data.get('JPT_NAZWA_', ''),
@@ -83,7 +90,10 @@ def get_commune_by_xy(request):
             'regon': data.get('REGON', '')
         },
         'source': 'PRG'
-    })
+    }
+
+    cache.set(cache_key, result, timeout=3600)
+    return Response(result)
 
 
 @api_view(['GET'])
@@ -101,15 +111,21 @@ def get_county_by_xy(request):
     except ValueError:
         return Response({'error': 'Invalid coordinates'}, status=400)
 
+    cache_key = f'county_xy_{x}_{y}_{epsg}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     data = get_administrative_info(x, y, epsg, 'A02_Granice_powiatow')
 
     if not data:
-        return Response({
+        result = {
             'error': 'County not found at coordinates',
             'coordinates': {'x': x, 'y': y, 'epsg': epsg}
-        }, status=404)
+        }
+        return Response(result, status=404)
 
-    return Response({
+    result = {
         'coordinates': {'x': x, 'y': y, 'epsg': epsg},
         'county': {
             'name': data.get('JPT_NAZWA_', ''),
@@ -117,7 +133,10 @@ def get_county_by_xy(request):
             'regon': data.get('REGON', '')
         },
         'source': 'PRG'
-    })
+    }
+
+    cache.set(cache_key, result, timeout=3600)
+    return Response(result)
 
 
 @api_view(['GET'])
@@ -135,15 +154,21 @@ def get_voivodeship_by_xy(request):
     except ValueError:
         return Response({'error': 'Invalid coordinates'}, status=400)
 
+    cache_key = f'voivodeship_xy_{x}_{y}_{epsg}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     data = get_administrative_info(x, y, epsg, 'A01_Granice_wojewodztw')
 
     if not data:
-        return Response({
+        result = {
             'error': 'Voivodeship not found at coordinates',
             'coordinates': {'x': x, 'y': y, 'epsg': epsg}
-        }, status=404)
+        }
+        return Response(result, status=404)
 
-    return Response({
+    result = {
         'coordinates': {'x': x, 'y': y, 'epsg': epsg},
         'voivodeship': {
             'name': data.get('JPT_NAZWA_', ''),
@@ -151,7 +176,10 @@ def get_voivodeship_by_xy(request):
             'regon': data.get('REGON', '')
         },
         'source': 'PRG'
-    })
+    }
+
+    cache.set(cache_key, result, timeout=3600)
+    return Response(result)
 
 
 @api_view(['GET'])
@@ -169,19 +197,28 @@ def get_region_by_xy(request):
     except ValueError:
         return Response({'error': 'Invalid coordinates'}, status=400)
 
+    cache_key = f'region_xy_{x}_{y}_{epsg}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     data = get_administrative_info(x, y, epsg, 'A06_Granice_obrebow_ewidencyjnych')
 
     if not data:
-        return Response({
+        result = {
             'error': 'Region not found at coordinates',
             'coordinates': {'x': x, 'y': y, 'epsg': epsg}
-        }, status=404)
+        }
+        return Response(result, status=404)
 
-    return Response({
+    result = {
         'coordinates': {'x': x, 'y': y, 'epsg': epsg},
         'region': {
             'name': data.get('JPT_NAZWA_', ''),
             'teryt': data.get('JPT_KOD_JE', '')
         },
         'source': 'PRG'
-    })
+    }
+
+    cache.set(cache_key, result, timeout=3600)
+    return Response(result)

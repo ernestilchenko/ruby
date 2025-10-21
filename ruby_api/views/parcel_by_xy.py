@@ -1,7 +1,7 @@
 from xml.etree import ElementTree as ET
 
 import requests
-from PyQt5.QtCore import QVariant
+from django.core.cache import cache
 from qgis.core import QgsVectorLayer, QgsDataSourceUri
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -49,6 +49,11 @@ def search_parcel_by_xy(request):
     except ValueError:
         return Response({'error': 'Invalid coordinates'}, status=400)
 
+    cache_key = f'parcel_xy_{x}_{y}_{epsg}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
+
     buffer = 50
     width = 101
     height = 101
@@ -78,30 +83,35 @@ def search_parcel_by_xy(request):
         features = parse_gugik_feature_info(response.content)
 
         if not features:
-            return Response({
+            result = {
                 'error': 'No features found at coordinates',
                 'coordinates': {'x': x, 'y': y, 'epsg': epsg}
-            }, status=404)
+            }
+            return Response(result, status=404)
 
         parcel_id = features[0].get('Identyfikator działki', '')
         if not parcel_id or '_' not in parcel_id:
-            return Response({
+            result = {
                 'coordinates': {'x': x, 'y': y, 'epsg': epsg},
                 'features': features,
                 'source': 'KrajowaIntegracjaEwidencjiGruntow'
-            })
+            }
+            cache.set(cache_key, result, timeout=1800)
+            return Response(result)
 
         teryt = parcel_id.split('_')[0][:4]
         service = WFS_SERVICES.get(teryt)
 
         if not service:
-            return Response({
+            result = {
                 'coordinates': {'x': x, 'y': y, 'epsg': epsg},
                 'teryt': teryt,
                 'features': features,
                 'source': 'KrajowaIntegracjaEwidencjiGruntow',
                 'note': 'WFS service not available for geometry'
-            })
+            }
+            cache.set(cache_key, result, timeout=1800)
+            return Response(result)
 
         qgs = QGISManager.get_application()
         layer_names = ['ms:dzialki', 'ewns:dzialki', 'wfs:dzialki']
@@ -124,25 +134,31 @@ def search_parcel_by_xy(request):
                     attributes = {field.name(): qvariant_to_python(value)
                                   for field, value in zip(layer.fields(), feature.attributes())}
 
-                    del layer
-                    return Response({
+                    result = {
                         'coordinates': {'x': x, 'y': y, 'epsg': epsg},
                         'teryt': teryt,
                         'service': service,
                         'parcel_id': parcel_id,
                         'attributes': attributes,
                         'geometry': feature.geometry().asWkt()
-                    })
+                    }
+
+                    cache.set(cache_key, result, timeout=3600)
+
+                    del layer
+                    return Response(result)
 
             del layer
 
-        return Response({
+        result = {
             'coordinates': {'x': x, 'y': y, 'epsg': epsg},
             'teryt': teryt,
             'features': features,
             'source': 'KrajowaIntegracjaEwidencjiGruntow',
             'note': 'Geometry not available from WFS'
-        })
+        }
+        cache.set(cache_key, result, timeout=1800)
+        return Response(result)
 
     except requests.RequestException as e:
         return Response({'error': f'Request failed: {str(e)}'}, status=500)

@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from qgis.core import QgsVectorLayer, QgsDataSourceUri
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -16,6 +17,11 @@ def search_building_by_id(request):
 
     if len(building_id) < 4:
         return Response({'error': 'Invalid building_id format'}, status=400)
+
+    cache_key = f'building_{building_id}'
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
 
     try:
         qgs = QGISManager.get_application()
@@ -46,14 +52,18 @@ def search_building_by_id(request):
                                   zip(layer.fields(), first_feature.attributes())}
                     geometry = first_feature.geometry().asWkt()
 
-                    del layer
-                    return Response({
+                    result = {
                         'building_id': building_id,
                         'service': service,
                         'layer_name': layer_name,
                         'attributes': attributes,
                         'geometry': geometry
-                    })
+                    }
+
+                    cache.set(cache_key, result, timeout=3600)
+
+                    del layer
+                    return Response(result)
             del layer
 
         return Response({'error': 'Building not found'}, status=404)
